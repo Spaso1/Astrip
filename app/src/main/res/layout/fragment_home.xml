@@ -15,7 +15,7 @@
             android:id="@+id/fab"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_margin="16dp"
+            android:layout_margin="32dp"
             android:background="@color/colorSecondary"
             android:contentDescription="123"
             android:src="@drawable/id_add"
