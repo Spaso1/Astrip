@@ -10,6 +10,15 @@ public class Project {
     private String date_start;
     private String date_end;
     private Map<String, Pointer> paths;
+    private String colorARGB;
+
+    public String getColorARGB() {
+        return colorARGB;
+    }
+
+    public void setColorARGB(String colorARGB) {
+        this.colorARGB = colorARGB;
+    }
 
     public int getId() {
         return id;

@@ -63,6 +63,18 @@
                 app:cornerRadius="8dp"
                 style="?attr/materialButtonOutlinedStyle"
                 android:layout_marginBottom="8dp"/>
+        <com.google.android.material.button.MaterialButton
+                android:id="@+id/option5"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="修改"
+                android:textColor="@android:color/black"
+                app:backgroundTint="@android:color/white"
+                app:strokeColor="@color/primary"
+                app:strokeWidth="1dp"
+                app:cornerRadius="8dp"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_marginBottom="8dp"/>
         <!-- 添加 ListView 来显示点的列表 -->
         <ListView
                 android:id="@+id/pointsListView"

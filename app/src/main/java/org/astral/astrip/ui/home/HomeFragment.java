@@ -10,6 +10,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.location.*;
 import android.os.Bundle;
 import android.util.Log;
@@ -36,6 +37,9 @@ import com.google.android.material.timepicker.MaterialTimePicker;
 import com.google.android.material.timepicker.TimeFormat;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import com.skydoves.colorpickerview.ColorEnvelope;
+import com.skydoves.colorpickerview.ColorPickerView;
+import com.skydoves.colorpickerview.listeners.ColorEnvelopeListener;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -89,6 +93,7 @@ public class HomeFragment extends Fragment {
         duilieSum = 1;
         this.savedInstanceState = savedInstanceState;
         save = requireContext().getSharedPreferences("save", Context.MODE_PRIVATE);
+
         return root;
     }
     @SuppressLint("MissingInflatedId")
@@ -140,11 +145,7 @@ public class HomeFragment extends Fragment {
                     }
                 });
                 MaterialButton option3 = dialogView.findViewById(R.id.option3);
-                if(isDes) {
-                    option3.setVisibility(View.VISIBLE);
-                }else {
-                    option3.setVisibility(View.GONE);
-                }
+
                 option3.setOnClickListener(v -> {
                     // 处理选项2的点击事件
 
@@ -161,6 +162,14 @@ public class HomeFragment extends Fragment {
                     isDes = false;
                     exitProject();
                 });
+
+                MaterialButton option5 = dialogView.findViewById(R.id.option5);
+                option5.setOnClickListener(v -> {
+                    design();
+                    //打开一个项目
+                    openProjectSingle();
+                });
+
                 builder.setPositiveButton("关闭", (dialog, which) -> {
                     dialog.dismiss();
                 });
@@ -169,9 +178,15 @@ public class HomeFragment extends Fragment {
                     option1.setVisibility(View.GONE);
                     option2.setEnabled(false);
                     option4.setVisibility(View.GONE);
+                    option5.setVisibility(View.GONE);
                     Toast.makeText(getContext(), "正在规划", Toast.LENGTH_SHORT).show();
                 }
-
+                if(isDes) {
+                    option3.setVisibility(View.VISIBLE);
+                }else {
+                    option3.setVisibility(View.GONE);
+                    option5.setVisibility(View.VISIBLE);
+                }
 
                 builder.show();
             }
@@ -192,6 +207,7 @@ public class HomeFragment extends Fragment {
         }
         designs = new HashMap<>();
         duilieSum = 1;
+
         Toolbar toolbar = ((MainActivity) requireActivity()).findViewById(R.id.toolbar);
         toolbar.setTitle("主页");
         Toast.makeText(getContext(), "已退出", Toast.LENGTH_SHORT).show();
@@ -230,6 +246,53 @@ public class HomeFragment extends Fragment {
                     if (!selectedProjectList.isEmpty()) {
                         // 打开选中的项目
                         openSelectedProjects(selectedProjectList);
+
+                        dialog.dismiss();
+                    } else {
+                        Toast.makeText(requireContext(), "请选择一个项目", Toast.LENGTH_SHORT).show();
+                    }
+                });
+
+                builder.setNegativeButton("取消", (dialog, which) -> dialog.dismiss());
+
+                builder.show();
+            } else {
+                Toast.makeText(requireContext(), "没有项目可打开", Toast.LENGTH_SHORT).show();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    private void openProjectSingle() {
+        // 从 Shared 中读取
+        try {
+            String json = save.getString("projects", "");
+            projects = new Gson().fromJson(json, new TypeToken<List<Project>>() {}.getType());
+            if (projects != null && !projects.isEmpty()) {
+                MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(requireContext());
+                // 使用单选框选择打开项目
+                builder.setTitle("选择项目");
+
+                // 准备项目名称数组
+                final String[] projectNames = projects.stream()
+                        .map(Project::getName)
+                        .toArray(String[]::new);
+
+                // 选择的项目索引
+                final int[] selectedProjectIndex = {-1};
+
+                builder.setSingleChoiceItems(projectNames, -1, (dialog, which) -> {
+                    // 处理选择事件
+                    selectedProjectIndex[0] = which;
+                });
+
+                builder.setPositiveButton("打开", (dialog, which) -> {
+                    // 处理打开按钮点击事件
+                    if (selectedProjectIndex[0] >= 0) {
+                        Project selectedProject = projects.get(selectedProjectIndex[0]);
+                        openSelectedProject(selectedProject);
+                        duilieSum = selectedProject.getPaths().size() + 1;
+                        designs= selectedProject.getPaths();
                         dialog.dismiss();
                     } else {
                         Toast.makeText(requireContext(), "请选择一个项目", Toast.LENGTH_SHORT).show();
@@ -281,57 +344,61 @@ public class HomeFragment extends Fragment {
     private void start() {
         if (run == 0) {
             run = 1;
-            mapView = binding.bmapView;
-            mapView.onCreate(getContext(), savedInstanceState);
+            try  {
+                mapView = binding.bmapView;
+                mapView.onCreate(getContext(), savedInstanceState);
 
-            baiduMap = mapView.getMap();
+                baiduMap = mapView.getMap();
 
-            // 设置地图中心点
-            LatLng latLng = new LatLng(y, x); // 北京市经纬度
-            baiduMap.setMapStatus(MapStatusUpdateFactory.newLatLngZoom(latLng, 13)); // 缩放级别调整为
+                // 设置地图中心点
+                LatLng latLng = new LatLng(y, x); // 北京市经纬度
+                baiduMap.setMapStatus(MapStatusUpdateFactory.newLatLngZoom(latLng, 13)); // 缩放级别调整为
 
-            // 添加独特样式的标记
+                // 添加独特样式的标记
 
-            Bitmap bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.logo); // 自定义图标资源
-            Bitmap scaledBitmap = Bitmap.createScaledBitmap(bitmap, 200, 130, true); // 缩放到 100x100 像素
-            BitmapDescriptor descriptor = BitmapDescriptorFactory.fromBitmap(scaledBitmap);
-            MarkerOptions markerOptions = new MarkerOptions()
-                    .position(latLng)
-                    .title("舞萌痴位置")
-                    .icon(descriptor); // 使用自定义图标
-            baiduMap.addOverlay(markerOptions);
+                Bitmap bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.logo); // 自定义图标资源
+                Bitmap scaledBitmap = Bitmap.createScaledBitmap(bitmap, 200, 130, true); // 缩放到 100x100 像素
+                BitmapDescriptor descriptor = BitmapDescriptorFactory.fromBitmap(scaledBitmap);
+                MarkerOptions markerOptions = new MarkerOptions()
+                        .position(latLng)
+                        .title("舞萌痴位置")
+                        .icon(descriptor); // 使用自定义图标
+                baiduMap.addOverlay(markerOptions);
 
-            // 设置地图点击监听器
-            baiduMap.setOnMapClickListener(new BaiduMap.OnMapClickListener() {
-                @Override
-                public void onMapClick(LatLng point) {
-                    // 处理地图点击事件
-                    Toast.makeText(requireContext(), "点击了地图: " + point.toString(), Toast.LENGTH_SHORT).show();
-                }
-
-                @Override
-                public void onMapPoiClick(MapPoi poi) {
-                    // 处理兴趣点点击事件
-
-                    if (isDes) {
-                        //MaterialAlertDialogBuilder
-                        handlePoiClick(poi);
-                    } else {
-                        Toast.makeText(requireContext(), "点击了兴趣点: " + poi.getName(), Toast.LENGTH_SHORT).show();
-                        //输出poi
-                        Log.d("poi", poi.getName());
-                        Log.d("poi", poi.getUid());
-                        Log.d("poi", poi.getPosition().toString());
+                // 设置地图点击监听器
+                baiduMap.setOnMapClickListener(new BaiduMap.OnMapClickListener() {
+                    @Override
+                    public void onMapClick(LatLng point) {
+                        // 处理地图点击事件
+                        Toast.makeText(requireContext(), "点击了地图: " + point.toString(), Toast.LENGTH_SHORT).show();
                     }
-                }
-            });
-            baiduMap.setOnMarkerClickListener(new BaiduMap.OnMarkerClickListener() {
-                @Override
-                public boolean onMarkerClick(Marker marker) {
-                    showMarkerInfoDialog(marker);
-                    return true; // 返回 true 表示已处理点击事件
-                }
-            });
+
+                    @Override
+                    public void onMapPoiClick(MapPoi poi) {
+                        // 处理兴趣点点击事件
+
+                        if (isDes) {
+                            //MaterialAlertDialogBuilder
+                            handlePoiClick(poi);
+                        } else {
+                            Toast.makeText(requireContext(), "点击了兴趣点: " + poi.getName(), Toast.LENGTH_SHORT).show();
+                            //输出poi
+                            Log.d("poi", poi.getName());
+                            Log.d("poi", poi.getUid());
+                            Log.d("poi", poi.getPosition().toString());
+                        }
+                    }
+                });
+                baiduMap.setOnMarkerClickListener(new BaiduMap.OnMarkerClickListener() {
+                    @Override
+                    public boolean onMarkerClick(Marker marker) {
+                        showMarkerInfoDialog(marker);
+                        return true; // 返回 true 表示已处理点击事件
+                    }
+                });
+            }catch (Exception e) {
+
+            }
         }
     }
     private void handlePoiClick(MapPoi poi) {
@@ -387,7 +454,6 @@ public class HomeFragment extends Fragment {
             Log.d("pointIdEditText", pointer.getPointUUID());
             if(p.getPointUUID().equals(pointer.getPointUUID())) {
                 b = true;
-                Log.d("pointIdEditText", s + "");
                 break;
             }
             s ++;
@@ -648,7 +714,6 @@ public class HomeFragment extends Fragment {
         TextInputEditText projectNameEditText = dialogView.findViewById(R.id.projectName);
         TextInputEditText dateStartEditText = dialogView.findViewById(R.id.dateStart);
         TextInputEditText dateEndEditText = dialogView.findViewById(R.id.dateEnd);
-
         // 设置日期选择器
         dateStartEditText.setOnClickListener(v -> {
             MaterialDatePicker.Builder<Long> datePickerBuilder = MaterialDatePicker.Builder.datePicker();
@@ -699,10 +764,7 @@ public class HomeFragment extends Fragment {
 
             // 保存项目到 SharedPreferences 或其他存储方式
             project.setDate_create(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date()));
-            projects.add(project);
-            saveProjectToSharedPreferences();
-
-            Toast.makeText(getContext(), "项目已保存!", Toast.LENGTH_SHORT).show();
+            setColorAndSave(project);
         });
 
         // 设置取消按钮
@@ -710,6 +772,43 @@ public class HomeFragment extends Fragment {
 
         builder.show();
     }
+    @SuppressLint("MissingInflatedId")
+    private void setColorAndSave(Project project) {
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(requireContext());
+        builder.setTitle("选择线条颜色");
+
+        // 创建并设置对话框视图
+        View dialogView = getLayoutInflater().inflate(R.layout.color_picker_dialog, null);
+        builder.setView(dialogView);
+
+        ColorPickerView colorPickerView = dialogView.findViewById(R.id.colorPickerView);
+        colorPickerView.setVisibility(View.VISIBLE);
+        colorPickerView.setInitialColor(Color.parseColor("#7FFF0000")); // 设置初始颜色为红色，透明度50%
+
+        colorPickerView.setColorListener(new ColorEnvelopeListener() {
+            @Override
+            public void onColorSelected(ColorEnvelope colorEnvelope, boolean fromUser) {
+                // 当用户选择了颜色时触发此方法
+                int selectedColor = colorEnvelope.getColor();
+                int alpha = 128; // 50% 透明度
+                int argbColor = Color.argb(alpha, Color.red(selectedColor), Color.green(selectedColor), Color.blue(selectedColor));
+                project.setColorARGB(String.format("#%08X", argbColor));
+                Log.d("HomeFragment", "onColorSelected: " + String.format("#%08X", argbColor));
+            }
+        });
+
+        builder.setPositiveButton("保存", (dialog, which) -> {
+            projects.add(project);
+            saveProjectToSharedPreferences();
+
+            Toast.makeText(getContext(), "项目已保存!", Toast.LENGTH_SHORT).show();
+            dialog.dismiss();
+        });
+        builder.setNegativeButton("取消", (dialog, which) -> dialog.dismiss());
+        builder.show();
+    }
+
+
 
     private void saveProjectToSharedPreferences() {
         Gson gson = new Gson();
@@ -758,6 +857,7 @@ public class HomeFragment extends Fragment {
                 reverseGeocode(lastKnownLocation.getLatitude(), lastKnownLocation.getLongitude());
             } else {
                 Toast.makeText(requireActivity().getApplicationContext(), "无法获取最新定位信息", Toast.LENGTH_SHORT).show();
+                setDefault();
                 Log.d("Location", "无法获取最新定位信息");
             }
         }
@@ -775,10 +875,13 @@ public class HomeFragment extends Fragment {
 
                 @Override
                 public void onProviderDisabled(@NonNull String provider) {
+                    setDefault();
                     Toast.makeText(requireActivity().getApplicationContext(), "关闭定位", Toast.LENGTH_SHORT).show();
                 }
             });
         } catch (Exception e) {
+            setDefault();
+
             Log.d("Location", "GPS定位失败");
         }
     }
@@ -820,7 +923,6 @@ public class HomeFragment extends Fragment {
                             this.detail = address;
                             this.province = province;
                             this.city = finalCity;
-                            start();
                         });
                     } else {
                         Log.d("Location", "高德地图 API 调用失败，尝试使用 Android 自带 Geocoder");
@@ -867,6 +969,12 @@ public class HomeFragment extends Fragment {
             Log.d("Location", "Android 自带 Geocoder 获取地址失败");
         }
     }
+    private void setDefault() {
+        //定位北京
+        x = 116.407525;
+        y = 39.90403;
+        start();
+    }
     private void openSelectedProject(Project project) {
         Toolbar toolbar = ((MainActivity) requireActivity()).findViewById(R.id.toolbar);
         toolbar.setTitle(project.getName());
@@ -875,9 +983,12 @@ public class HomeFragment extends Fragment {
     private void addMarkersAndPolyline(Project project) {
         Map<String, Pointer> paths = project.getPaths();
         List<LatLng> points = new ArrayList<>();
-        for (Pointer pointer : paths.values()) {
+        List<Pointer> sortedPointers = new ArrayList<>(paths.values());
+        Collections.sort(sortedPointers, Comparator.comparingInt(Pointer::getPointId));
+
+        for (Pointer pointer : sortedPointers) {
             Log.d(pointer.getPointName(), pointer.getX() + " " + pointer.getY());
-            if(pointer.getX() == 0.0 && pointer.getY() == 0.0) {
+            if (pointer.getX() == 0.0 && pointer.getY() == 0.0) {
                 continue;
             }
             points.add(new LatLng(pointer.getY(), pointer.getX()));
@@ -892,7 +1003,7 @@ public class HomeFragment extends Fragment {
         }
 
         // 添加新的 Marker
-        for (Pointer pointer : paths.values()) {
+        for (Pointer pointer : sortedPointers) {
             LatLng point = new LatLng(pointer.getY(), pointer.getX());
             Bitmap bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.logo);
             Bitmap scaledBitmap = Bitmap.createScaledBitmap(bitmap, 100, 65, true); // 缩放到 100x65 像素
@@ -918,15 +1029,19 @@ public class HomeFragment extends Fragment {
                 polylinePoints.add(points.get(i + 1));
             }
 
+            // 获取项目颜色
+            int polylineColor = 0xAAFF0000;
+            try {
+                polylineColor = Color.parseColor(project.getColorARGB());
+            }catch (Exception e) {}
+
             OverlayOptions polylineOptions = new PolylineOptions()
                     .points(polylinePoints)
                     .width(10)
-                    .color(0xAAFF0000);
+                    .color(polylineColor);
             polyline = (Polyline) baiduMap.addOverlay(polylineOptions);
         }
-
     }
-
     private void addMarkersAndPolyline(List<Project> projects) {
         // 清除之前的 Marker 和 Polyline
         for (Marker marker : markers) {
@@ -974,10 +1089,19 @@ public class HomeFragment extends Fragment {
                     polylinePoints.add(points.get(i + 1));
                 }
 
+                // 获取项目颜色
+                int polylineColor = 0xAAFF0000;
+                try {
+                    Log.d("Location", project.getColorARGB());
+                    polylineColor = Color.parseColor(project.getColorARGB());
+                }catch (Exception e) {
+                    e.printStackTrace();
+                }
+
                 OverlayOptions polylineOptions = new PolylineOptions()
                         .points(polylinePoints)
                         .width(10)
-                        .color(0xAAFF0000);
+                        .color(polylineColor);
                 polyline = (Polyline) baiduMap.addOverlay(polylineOptions);
             }
         }

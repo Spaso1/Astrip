@@ -43,6 +43,11 @@ public class MainActivity extends AppCompatActivity {
     public boolean onCreateOptionsMenu(Menu menu) {
         // Inflate the menu; this adds items to the action bar if it is present.
         getMenuInflater().inflate(R.menu.main, menu);
+        //点击设置打开Fragment
+        menu.findItem(R.id.action_settings).setOnMenuItemClickListener(item -> {
+            Navigation.findNavController(this, R.id.nav_host_fragment_content_main).navigate(R.id.nav_slideshow);
+            return true;
+        });
         return true;
     }
 
