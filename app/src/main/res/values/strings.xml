@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">FindMaimaiDX</string>
+    <string name="app_name">AsTrip</string>
     <string name="menu_item_switch">Proxy</string>
     <string name="menu_item_about">About</string>
     <string name="menu_item_exit">Exit</string>
@@ -24,7 +24,7 @@
     <string name="navigation_drawer_open">Open navigation drawer</string>
     <string name="navigation_drawer_close">Close navigation drawer</string>
     <string name="menu_home">主页</string>
-    <string name="menu_gallery">规划</string>
+    <string name="menu_gallery">项目</string>
     <string name="menu_slideshow">设置</string>
     <string name="nav_header_title">AsTrip</string>
     <string name="nav_header_subtitle">Reisa</string>
