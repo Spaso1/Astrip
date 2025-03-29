@@ -8,9 +8,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.Color;
+import android.graphics.*;
 import android.location.*;
 import android.os.Bundle;
 import android.util.Log;
@@ -47,11 +45,13 @@ import org.astral.astrip.MainActivity;
 import org.astral.astrip.R;
 import org.astral.astrip.adapter.PointsAdapter;
 import org.astral.astrip.been.AmapReverseGeocodeResponse;
+import org.astral.astrip.been.LikePlace;
 import org.astral.astrip.been.Pointer;
 import org.astral.astrip.been.Project;
 import org.astral.astrip.databinding.FragmentHomeBinding;
 
 import java.io.IOException;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -79,6 +79,9 @@ public class HomeFragment extends Fragment {
     private int duilieSum;
     private int run = 0;
     private List<Project> projects = new ArrayList<>();
+    private List<Marker> likeMarkers = new ArrayList<>();
+    private List<Marker> useLikeMarkers = new ArrayList<>();
+    private List<LikePlace> likePlaces = new ArrayList<>();
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
         HomeViewModel homeViewModel =
@@ -87,14 +90,40 @@ public class HomeFragment extends Fragment {
         SDKInitializer.initialize(requireContext().getApplicationContext());
         binding = FragmentHomeBinding.inflate(inflater, container, false);
         View root = binding.getRoot();
+        setDefault();
+
         requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION},0x123);
         FloatingActionButton fab = binding.fab;
         menu(fab);
         duilieSum = 1;
         this.savedInstanceState = savedInstanceState;
         save = requireContext().getSharedPreferences("save", Context.MODE_PRIVATE);
-
+        readLikePlace();
         return root;
+    }
+
+    private void readLikePlace() {
+        try {
+            String json = save.getString("likePlaces", "");
+            if (!json.isEmpty()) {
+                likePlaces = new Gson().fromJson(json, new TypeToken<List<LikePlace>>() {}.getType());
+                for (LikePlace likePlace : likePlaces) {
+                    LatLng latLng = new LatLng(likePlace.getX(), likePlace.getY());
+                    addLikeMarker(latLng, likePlace.getName());
+                }
+            }
+        }catch (Exception e) {
+
+        }
+    }
+    private void saveLikePlace() {
+        try {
+            String json = new Gson().toJson(likePlaces);
+            save.edit().putString("likePlaces", json).apply();
+            save.edit().apply();
+        }catch (Exception e) {
+
+        }
     }
     @SuppressLint("MissingInflatedId")
     private void menu(FloatingActionButton fab) {
@@ -120,12 +149,13 @@ public class HomeFragment extends Fragment {
 
                 // 找到选项按钮并设置点击事件
                 MaterialButton option1 = dialogView.findViewById(R.id.option1);
+                MaterialButton option2 = dialogView.findViewById(R.id.option2);
+                MaterialButton option3 = dialogView.findViewById(R.id.option3);
                 option1.setOnClickListener(v -> {
                     // 处理选项1的点击事件
                     openProject() ;
                 });
 
-                MaterialButton option2 = dialogView.findViewById(R.id.option2);
                 option2.setOnClickListener(v -> {
                     // 处理选项2的点击事件
                     design();
@@ -143,8 +173,9 @@ public class HomeFragment extends Fragment {
                     for (Marker marker : markers) {
                         marker.remove();
                     }
+                    option3.setVisibility(View.VISIBLE);
+
                 });
-                MaterialButton option3 = dialogView.findViewById(R.id.option3);
 
                 option3.setOnClickListener(v -> {
                     // 处理选项2的点击事件
@@ -154,6 +185,8 @@ public class HomeFragment extends Fragment {
 
                     isDes = false;
                     option3.setVisibility(View.GONE);
+
+
                     exitProject();
                 });
                 MaterialButton option4 = dialogView.findViewById(R.id.option4);
@@ -293,6 +326,17 @@ public class HomeFragment extends Fragment {
                         openSelectedProject(selectedProject);
                         duilieSum = selectedProject.getPaths().size() + 1;
                         designs= selectedProject.getPaths();
+                        Toast.makeText(getContext(), "已打开", Toast.LENGTH_SHORT).show();
+                        //摄像机移动中心,缩放
+                        double minX = selectedProject.getPaths().values().stream().mapToDouble(p -> p.getX()).min().orElse(0);
+                        double maxX = selectedProject.getPaths().values().stream().mapToDouble(p -> p.getX()).max().orElse(0);
+                        double minY = selectedProject.getPaths().values().stream().mapToDouble(p -> p.getY()).min().orElse(0);
+                        double maxY = selectedProject.getPaths().values().stream().mapToDouble(p -> p.getY()).max().orElse(0);
+                        int zoom = (int)( (Math.min(Math.log(360 / (maxX - minX)), Math.log(360 / (maxY - minY)))) * 1.7);
+                        baiduMap.animateMapStatus(MapStatusUpdateFactory.newLatLngZoom(new LatLng(selectedProject.getPaths().values().stream().mapToDouble(p -> p.getY()).average().orElse(0),
+                                selectedProject.getPaths().values().stream().mapToDouble(p -> p.getX()).average().orElse(0)), zoom));
+                        //计算应该缩小到
+                        design();
                         dialog.dismiss();
                     } else {
                         Toast.makeText(requireContext(), "请选择一个项目", Toast.LENGTH_SHORT).show();
@@ -324,14 +368,25 @@ public class HomeFragment extends Fragment {
 
         // 设置 Toolbar 标题
         StringBuilder titleBuilder = new StringBuilder("项目: ");
+        List<Pointer> points = new ArrayList<>();
+
         for (int i = 0; i < projects.size(); i++) {
             titleBuilder.append(projects.get(i).getName());
+            points.addAll(projects.get(i).getPaths().values());
             if (i < projects.size() - 1) {
                 titleBuilder.append(", ");
             }
         }
         Toolbar toolbar = ((MainActivity) requireActivity()).findViewById(R.id.toolbar);
         toolbar.setTitle(titleBuilder.toString());
+        double minX = points.stream().mapToDouble(p -> p.getX()).min().orElse(0);
+        double maxX = points.stream().mapToDouble(p -> p.getX()).max().orElse(0);
+        double minY = points.stream().mapToDouble(p -> p.getY()).min().orElse(0);
+        double maxY = points.stream().mapToDouble(p -> p.getY()).max().orElse(0);
+        int zoom = (int)( (Math.min(Math.log(360 / (maxX - minX)), Math.log(360 / (maxY - minY)))) * 1.7);
+        Log.d("HomeFragment", "save: " + zoom);
+        baiduMap.animateMapStatus(MapStatusUpdateFactory.newLatLngZoom(new LatLng(points.stream().mapToDouble(p -> p.getY()).average().orElse(0),
+                points.stream().mapToDouble(p -> p.getX()).average().orElse(0)), zoom));
 
         Toast.makeText(getContext(), "项目已打开", Toast.LENGTH_SHORT).show();
     }
@@ -356,12 +411,12 @@ public class HomeFragment extends Fragment {
 
                 // 添加独特样式的标记
 
-                Bitmap bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.logo); // 自定义图标资源
-                Bitmap scaledBitmap = Bitmap.createScaledBitmap(bitmap, 200, 130, true); // 缩放到 100x100 像素
+                Bitmap bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.mmexport3ce9739b640a7e4ce6464c7392896ad6_1743239672087); // 自定义图标资源
+                Bitmap scaledBitmap = Bitmap.createScaledBitmap(bitmap, 120, 120, true); // 缩放到 100x100 像素
                 BitmapDescriptor descriptor = BitmapDescriptorFactory.fromBitmap(scaledBitmap);
                 MarkerOptions markerOptions = new MarkerOptions()
                         .position(latLng)
-                        .title("舞萌痴位置")
+                        .title("本人位置")
                         .icon(descriptor); // 使用自定义图标
                 baiduMap.addOverlay(markerOptions);
 
@@ -372,7 +427,6 @@ public class HomeFragment extends Fragment {
                         // 处理地图点击事件
                         Toast.makeText(requireContext(), "点击了地图: " + point.toString(), Toast.LENGTH_SHORT).show();
                     }
-
                     @Override
                     public void onMapPoiClick(MapPoi poi) {
                         // 处理兴趣点点击事件
@@ -392,8 +446,20 @@ public class HomeFragment extends Fragment {
                 baiduMap.setOnMarkerClickListener(new BaiduMap.OnMarkerClickListener() {
                     @Override
                     public boolean onMarkerClick(Marker marker) {
-                        showMarkerInfoDialog(marker);
+                        if (likeMarkers.contains(marker) && !useLikeMarkers.contains(marker)) {
+                            //MaterialAlertDialogBuilder
+                            handleMarkerClick(marker);
+                        }else {
+                            showMarkerInfoDialog(marker);
+                        }
                         return true; // 返回 true 表示已处理点击事件
+                    }
+                });
+                baiduMap.setOnMapLongClickListener(new BaiduMap.OnMapLongClickListener() {
+
+                    @Override
+                    public void onMapLongClick(LatLng latLng) {
+                        createLikeMarker(latLng);
                     }
                 });
             }catch (Exception e) {
@@ -401,6 +467,72 @@ public class HomeFragment extends Fragment {
             }
         }
     }
+    private void addLikeMarker(final LatLng latLng,String markerName) {
+        // 创建 Bundle 对象并设置 x, y, name 内容
+        Bundle extraInfo = new Bundle();
+        extraInfo.putDouble("x", latLng.longitude);
+        extraInfo.putDouble("y", latLng.latitude);
+        extraInfo.putString("name", markerName);
+
+        // 创建 MarkerOptions 并附加 Bundle
+        MarkerOptions markerOptions = new MarkerOptions()
+                .position(latLng)
+                .title(markerName)
+                .icon(BitmapDescriptorFactory.fromResource(R.drawable.mmexportbba7d96e1e5550eab0dc29ed9d4715a3_1743252114743))
+                .extraInfo(extraInfo);
+        Marker marker = (Marker) baiduMap.addOverlay(markerOptions);
+        likeMarkers.add(marker); // 将标记添加到 likeMarkers 列表中
+    }
+    @SuppressLint("MissingInflatedId")
+    private void createLikeMarker(LatLng latLng) {
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(requireContext());
+        builder.setTitle("添加收藏");
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_like, null);
+        TextView text = dialogView.findViewById(R.id.text);
+        text.setText(latLng.toString());
+        TextInputEditText markerNameInput = dialogView.findViewById(R.id.markerNameInput);
+        builder.setView(dialogView);
+
+        builder.setPositiveButton("确定", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialogInterface, int i) {
+                // 获取标记名称
+                String markerName = markerNameInput.getText().toString().trim();
+                if (markerName.isEmpty()) {
+                    Toast.makeText(requireContext(), "请输入标记名称", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+
+                // 创建 Bundle 对象并设置 x, y, name 内容
+                Bundle extraInfo = new Bundle();
+                extraInfo.putDouble("x", latLng.longitude);
+                extraInfo.putDouble("y", latLng.latitude);
+                extraInfo.putString("name", markerName);
+
+                // 创建 MarkerOptions 并附加 Bundle
+                MarkerOptions markerOptions = new MarkerOptions()
+                        .position(latLng)
+                        .title(markerName)
+                        .icon(BitmapDescriptorFactory.fromResource(R.drawable.mmexportbba7d96e1e5550eab0dc29ed9d4715a3_1743252114743))
+                        .extraInfo(extraInfo);
+                Marker marker = (Marker) baiduMap.addOverlay(markerOptions);
+                likeMarkers.add(marker); // 将标记添加到 likeMarkers 列表中
+
+                saveLikePlace();
+            }
+        });
+
+        builder.setNegativeButton("取消", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialogInterface, int i) {
+                dialogInterface.dismiss();
+            }
+        });
+
+        builder.show();
+    }
+
+
     private void handlePoiClick(MapPoi poi) {
         // 创建 Pointer 对象
         Pointer pointer = new Pointer();
@@ -413,6 +545,24 @@ public class HomeFragment extends Fragment {
         pointer.setType("poi");
         pointer.setX(poi.getPosition().longitude);
         pointer.setY(poi.getPosition().latitude);
+        pointer.setPay(0); // 可以根据需要设置支付信息
+
+        // 显示弹窗
+        showPointerInfoDialog(pointer);
+    }
+    private void handleMarkerClick(Marker marker) {
+        // 创建 Pointer 对象
+        Pointer pointer = new Pointer();
+        pointer.setPointName(marker.getName());
+        pointer.setPointId(0); // 可以根据需要设置 ID
+        UUID uuid = new UUID(new Random().nextInt(10), new Random().nextInt(15));
+        pointer.setPointUUID(uuid.toString());
+        pointer.setType("poi");
+        Bundle extraInfo = marker.getExtraInfo();
+        double x = (double) extraInfo.get("x");
+        double y = (double) extraInfo.get("y");
+        pointer.setX(x);
+        pointer.setY(y);
         pointer.setPay(0); // 可以根据需要设置支付信息
 
         // 显示弹窗
@@ -449,47 +599,94 @@ public class HomeFragment extends Fragment {
         payEditText.setText(String.valueOf(pointer.getPay()));
         int s = 1;
         boolean b = false;
-        for(Pointer p : designs.values()) {
-            Log.d("pointIdEditText", p.getPointUUID());
-            Log.d("pointIdEditText", pointer.getPointUUID());
+        String key = null;
+
+        String oldTime = "0";
+        //designs决定
+        //获取designs内容和key
+        for (Map.Entry<String, Pointer> entry : designs.entrySet()) {
+            Pointer p = entry.getValue();
             if(p.getPointUUID().equals(pointer.getPointUUID())) {
                 b = true;
+                key = entry.getKey();
+                Log.d("designs", "1");
+                datetimeEditText.setText(p.getTime());
+                oldTime = p.getTime();
+                Log.d("designs", "2");
+                pointNameEditText.setText(p.getPointName());
+                Log.d("designs", "3");
+                pointIdEditText.setText(p.getPointId() + "");
+                Log.d("designs", "4");
+                pointUUIDEditText.setText(p.getPointUUID());
+                Log.d("designs", "5");
+                typeEditText.setText(p.getType());
+                Log.d("designs", "6");
+                xEditText.setText(String.valueOf(p.getX()));
+                Log.d("designs", "7");
+                yEditText.setText(String.valueOf(p.getY()));
+                Log.d("designs", "8");
+                payEditText.setText(String.valueOf(p.getPay()));
                 break;
             }
-            s ++;
+            s ++;        
         }
+
         if (b) {
             deleteButton.setVisibility(View.VISIBLE);
             updateButton.setVisibility(View.VISIBLE);
-            pointIdEditText.setText(s + "");
+            pointIdEditText.setText(key);
         }
         // 设置日期时间选择器
+        // 设置日期时间选择器
+        String finalOldTime = oldTime;
         datetimePickerButton.setOnClickListener(v -> {
             // 创建日期选择器
             MaterialDatePicker.Builder<Long> datePickerBuilder = MaterialDatePicker.Builder.datePicker();
-            datePickerBuilder.setTitleText("Select Date");
+            datePickerBuilder.setTitleText("选择日期");
+
+            // 如果 oldTime 不等于 "0"，设置默认日期
+            if (!finalOldTime.equals("0")) {
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault());
+                try {
+                    Date date = sdf.parse(finalOldTime);
+                    datePickerBuilder.setSelection(date.getTime());
+                } catch (ParseException e) {
+                    e.printStackTrace();
+                }
+            }
+
             MaterialDatePicker<Long> datePicker = datePickerBuilder.build();
 
             datePicker.show(getParentFragmentManager(), "DATE_PICKER_TAG");
 
             datePicker.addOnPositiveButtonClickListener(selection -> {
                 // 创建时间选择器
+                int hour = 12;
+                int minute = 0;
+                // 如果 oldTime 不等于 "0"，设置默认时间
+                if (!finalOldTime.equals("0")) {
+                    hour = Integer.parseInt(finalOldTime.split(" ")[1].split(":")[0]);
+                    minute = Integer.parseInt(finalOldTime.split(" ")[1].split(":")[1]);
+                }
+
                 MaterialTimePicker timePicker = new MaterialTimePicker.Builder()
                         .setTimeFormat(TimeFormat.CLOCK_24H)
-                        .setHour(12)
-                        .setMinute(0)
-                        .setTitleText("Select Time")
+                        .setHour(hour)
+                        .setMinute(minute)
+                        .setTitleText("选择时间")
                         .build();
+
+
 
                 timePicker.show(getParentFragmentManager(), "TIME_PICKER_TAG");
 
                 timePicker.addOnPositiveButtonClickListener(dialog -> {
-                    int hour = timePicker.getHour();
-                    int minute = timePicker.getMinute();
+                    int hour1 = timePicker.getHour();
+                    int minute1 = timePicker.getMinute();
                     Calendar calendar = Calendar.getInstance();
                     calendar.setTimeInMillis(selection);
-                    calendar.set(Calendar.HOUR_OF_DAY, hour);
-                    calendar.set(Calendar.MINUTE, minute);
+                    calendar.set(Calendar.HOUR_OF_DAY, hour1);
+                    calendar.set(Calendar.MINUTE, minute1);
 
                     // 格式化日期时间
                     SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault());
@@ -498,6 +695,7 @@ public class HomeFragment extends Fragment {
                 });
             });
         });
+
 
         // 设置更新按钮
         int finalS = s;
@@ -554,6 +752,11 @@ public class HomeFragment extends Fragment {
             addMarkersAndPolyline(project);
 
             Toast.makeText(getContext(), "更新成功!", Toast.LENGTH_SHORT).show();
+
+            if (type.equals("终点") || isEndCheckBox.isChecked()) {
+                Toast.makeText(getContext(), "规划完成~进入下一步", Toast.LENGTH_SHORT).show();
+                save();
+            }
         });
 
         // 设置删除按钮
@@ -629,7 +832,6 @@ public class HomeFragment extends Fragment {
                     Log.d("HomeFragment", "onClick: " + newPointer.getPointName());
                     if (type.equals("终点") || isEndCheckBox.isChecked()) {
                         Toast.makeText(getContext(), "规划完成~进入下一步", Toast.LENGTH_SHORT).show();
-                        isDes = false;
                         save();
                     }
                     Toast.makeText(getContext(), "添加成功!", Toast.LENGTH_SHORT).show();
@@ -648,6 +850,7 @@ public class HomeFragment extends Fragment {
     }
 
     private void doCheck(Pointer pointer) {
+        Log.d("HomeFragment", "doCheck: " + pointer.getTime());
         showPointerInfoDialog(pointer);
     }
 
@@ -750,6 +953,7 @@ public class HomeFragment extends Fragment {
                     dateStartEditText.getText().toString().isEmpty() ||
                     dateEndEditText.getText().toString().isEmpty()) {
                 Toast.makeText(requireContext(), "请填写完整信息", Toast.LENGTH_SHORT).show();
+                isDes=true;
                 return;
             }
 
@@ -800,8 +1004,12 @@ public class HomeFragment extends Fragment {
         builder.setPositiveButton("保存", (dialog, which) -> {
             projects.add(project);
             saveProjectToSharedPreferences();
+            isDes = false;
 
             Toast.makeText(getContext(), "项目已保存!", Toast.LENGTH_SHORT).show();
+
+            Toolbar toolbar = (Toolbar)  requireActivity().findViewById(R.id.toolbar);
+            toolbar.setTitle("主页");
             dialog.dismiss();
         });
         builder.setNegativeButton("取消", (dialog, which) -> dialog.dismiss());
@@ -854,6 +1062,7 @@ public class HomeFragment extends Fragment {
             Location lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
             if (lastKnownLocation != null) {
                 // 调用高德地图 API 进行逆地理编码
+                run = 0;
                 reverseGeocode(lastKnownLocation.getLatitude(), lastKnownLocation.getLongitude());
             } else {
                 Toast.makeText(requireActivity().getApplicationContext(), "无法获取最新定位信息", Toast.LENGTH_SHORT).show();
@@ -893,45 +1102,7 @@ public class HomeFragment extends Fragment {
                 // 构建请求 URL
                 this.x = longitude;
                 this.y = latitude;
-                String url = "https://restapi.amap.com/v3/geocode/regeo?key=234cad2e2f0706e54c92591647a363c3&location=" + longitude + "," + latitude;
-                Log.d("Location", url);
-                // 发起网络请求
-                OkHttpClient client = new OkHttpClient();
-                Request request = new Request.Builder().url(url).build();
-                Response response = client.newCall(request).execute();
-                if (response.isSuccessful()) {
-                    String responseData = response.body().string();
-                    // 使用 Gson 解析 JSON
-                    Gson gson = new Gson();
-                    Log.d("Location", responseData);
-                    AmapReverseGeocodeResponse geocodeResponse = gson.fromJson(responseData, AmapReverseGeocodeResponse.class);
-                    if (geocodeResponse.getStatus().equals("1")) { // 状态码 "1" 表示成功
-                        AmapReverseGeocodeResponse.Regeocode regeocode = geocodeResponse.getRegeocode();
-                        AmapReverseGeocodeResponse.AddressComponent addressComponent = regeocode.getAddressComponent();
-                        // 解析地址信息
-                        String address = regeocode.getFormattedAddress();
-                        String province = addressComponent.getProvince();
-                        String city;
-                        try {
-                            city = addressComponent.getCity().get(0).replace("市", "");
-                        } catch (Exception e) {
-                            city = addressComponent.getProvince().replace("市", "");
-                        }
-                        // 更新 UI
-                        String finalCity = city;
-                        getActivity().runOnUiThread(() -> {
-                            this.detail = address;
-                            this.province = province;
-                            this.city = finalCity;
-                        });
-                    } else {
-                        Log.d("Location", "高德地图 API 调用失败，尝试使用 Android 自带 Geocoder");
-                        fallbackToGeocoder(latitude, longitude); // 调用备用方案
-                    }
-                } else {
-                    Log.d("Location", "高德地图 API 调用失败，尝试使用 Android 自带 Geocoder");
-                    fallbackToGeocoder(latitude, longitude); // 调用备用方案
-                }
+                start();
             } catch (Exception e) {
                 e.printStackTrace();
                 Log.d("Location", "高德地图 API 调用失败，尝试使用 Android 自带 Geocoder");
@@ -980,6 +1151,67 @@ public class HomeFragment extends Fragment {
         toolbar.setTitle(project.getName());
         addMarkersAndPolyline(project);
     }
+    private String nowdate = "0";
+    private int[] color = new int[3];
+    private Bitmap createMarkerBitmapWithTime(Bitmap baseBitmap, String time) {
+        // 创建一个新的位图，宽度为原位图宽度加上文本宽度，高度为原位图高度
+        baseBitmap = Bitmap.createScaledBitmap(baseBitmap, 60, 65, true); // 缩放到 60x65 像素
+
+        int baseWidth = baseBitmap.getWidth() + 22;
+        int baseHeight = baseBitmap.getHeight();
+        int textWidth = (int) (time.length() * 20); // 根据字体大小调整
+        int newWidth = baseWidth + textWidth - 50; // 加上一些间距
+        int newHeight = baseHeight;
+
+        Bitmap newBitmap = Bitmap.createBitmap(newWidth, newHeight, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(newBitmap);
+
+        // 绘制原位图
+        canvas.drawBitmap(baseBitmap, 0, 0, null);
+
+        // 设置文本颜色和样式
+        Paint textPaint = new Paint();
+        textPaint.setTextSize(30); // 字体大小
+        textPaint.setTextAlign(Paint.Align.LEFT); // 左对齐
+
+        // 提取日期部分
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
+        String currentDate = dateFormat.format(new Date());
+        String markerDate = time.substring(0, 10); // 提取 yyyy-MM-dd 部分
+        if (nowdate.equals("0")) {
+            nowdate = markerDate;
+            Random random = new Random();
+            int red = random.nextInt(256);
+            int green = random.nextInt(256);
+            int blue = random.nextInt(256);
+            color[0] = red;
+            color[1] = green;
+            color[2] = blue;
+        }
+        // 比较日期
+        if (nowdate.equals(markerDate)) {
+            textPaint.setColor(Color.rgb(color[0], color[1], color[2])); // 同一天使用绿色
+        } else {
+            // 不同一天使用随机颜色
+            nowdate = markerDate;
+            Random random = new Random();
+            int red = random.nextInt(256);
+            int green = random.nextInt(256);
+            int blue = random.nextInt(256);
+            color[0] = red;
+            color[1] = green;
+            color[2] = blue;
+            textPaint.setColor(Color.rgb(color[0], color[1], color[2])); // 同一天使用绿色
+        }
+
+        // 绘制时间文本
+        canvas.drawText(time, baseWidth - 20, baseHeight / 2 + 4, textPaint); // (x, y) 是文本起始坐标
+
+        return newBitmap;
+    }
+
+
+
     private void addMarkersAndPolyline(Project project) {
         Map<String, Pointer> paths = project.getPaths();
         List<LatLng> points = new ArrayList<>();
@@ -1005,9 +1237,26 @@ public class HomeFragment extends Fragment {
         // 添加新的 Marker
         for (Pointer pointer : sortedPointers) {
             LatLng point = new LatLng(pointer.getY(), pointer.getX());
-            Bitmap bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.logo);
-            Bitmap scaledBitmap = Bitmap.createScaledBitmap(bitmap, 100, 65, true); // 缩放到 100x65 像素
-            BitmapDescriptor descriptor = BitmapDescriptorFactory.fromBitmap(scaledBitmap);
+            //随机选择图片0,1,2
+            int random = (int) (Math.random() * 3);
+            Bitmap bitmap = null;
+            switch (random) {
+                case 0:
+                    bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.mmexport3ce9739b640a7e4ce6464c7392896ad6_1743239672087);
+                    break;
+                case 1:
+                    bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.mmexporta952e89b082c27bff635a278e0643b9b_1743252098398);
+                    break;
+                case 2:
+                    bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.mmexportbba7d96e1e5550eab0dc29ed9d4715a3_1743252114743);
+                    break;
+            }
+// 创建包含时间信息的 Bitmap
+            String time = pointer.getTime();
+            Bitmap newBitmap = createMarkerBitmapWithTime(bitmap, time);
+
+            BitmapDescriptor descriptor = BitmapDescriptorFactory.fromBitmap(newBitmap);
+
             MarkerOptions markerOptions = new MarkerOptions()
                     .position(point)
                     .icon(descriptor);
@@ -1054,7 +1303,10 @@ public class HomeFragment extends Fragment {
         for (Project project : projects) {
             Map<String, Pointer> paths = project.getPaths();
             List<LatLng> points = new ArrayList<>();
-            for (Pointer pointer : paths.values()) {
+            List<Pointer> sortedPointers = new ArrayList<>(paths.values());
+            Collections.sort(sortedPointers, Comparator.comparingInt(Pointer::getPointId));
+
+            for (Pointer pointer : sortedPointers) {
                 Log.d(pointer.getPointName(), pointer.getX() + " " + pointer.getY());
                 if (pointer.getX() == 0.0 && pointer.getY() == 0.0) {
                     continue;
@@ -1063,11 +1315,27 @@ public class HomeFragment extends Fragment {
             }
 
             // 添加新的 Marker
-            for (Pointer pointer : paths.values()) {
+            for (Pointer pointer : sortedPointers) {
                 LatLng point = new LatLng(pointer.getY(), pointer.getX());
-                Bitmap bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.logo);
-                Bitmap scaledBitmap = Bitmap.createScaledBitmap(bitmap, 100, 65, true); // 缩放到 100x65 像素
-                BitmapDescriptor descriptor = BitmapDescriptorFactory.fromBitmap(scaledBitmap);
+                Bitmap bitmap = null;
+                int random = (int) (Math.random() * 3);
+                switch (random) {
+                    case 0:
+                        bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.mmexport3ce9739b640a7e4ce6464c7392896ad6_1743239672087);
+                        break;
+                    case 1:
+                        bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.mmexporta952e89b082c27bff635a278e0643b9b_1743252098398);
+                        break;
+                    case 2:
+                        bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.mmexportbba7d96e1e5550eab0dc29ed9d4715a3_1743252114743);
+                        break;
+                }
+// 创建包含时间信息的 Bitmap
+                String time = pointer.getTime();
+                Bitmap newBitmap = createMarkerBitmapWithTime(bitmap, time);
+
+                BitmapDescriptor descriptor = BitmapDescriptorFactory.fromBitmap(newBitmap);
+
                 MarkerOptions markerOptions = new MarkerOptions()
                         .position(point)
                         .icon(descriptor);
@@ -1092,11 +1360,8 @@ public class HomeFragment extends Fragment {
                 // 获取项目颜色
                 int polylineColor = 0xAAFF0000;
                 try {
-                    Log.d("Location", project.getColorARGB());
                     polylineColor = Color.parseColor(project.getColorARGB());
-                }catch (Exception e) {
-                    e.printStackTrace();
-                }
+                }catch (Exception e) {}
 
                 OverlayOptions polylineOptions = new PolylineOptions()
                         .points(polylinePoints)

@@ -1,0 +1,27 @@
+<!-- dialog_like.xml -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="wrap_content"
+              android:orientation="vertical"
+              android:padding="16dp">
+
+    <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+        <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/markerNameInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="标记名称" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <TextView
+            android:id="@+id/text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="添加收藏标记"
+            android:gravity="center"
+            android:paddingTop="16dp" />
+</LinearLayout>
+   

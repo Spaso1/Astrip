@@ -1,5 +1,7 @@
 package org.astral.astrip.ui.slideshow;
 
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -23,10 +25,19 @@ public class SlideshowFragment extends Fragment {
         View root = binding.getRoot();
 
         final TextView textView = binding.textSlideshow;
-        slideshowViewModel.getText().observe(getViewLifecycleOwner(), textView::setText);
+        textView.setText("Powered By Reisa - 敬请期待\n" + getAppVersionName());
+        //获取gradle的版本号
         return root;
     }
-
+    private String getAppVersionName() {
+        try {
+            PackageInfo packageInfo = getContext().getPackageManager().getPackageInfo(getContext().getPackageName(), 0);
+            return packageInfo.versionName;
+        } catch (PackageManager.NameNotFoundException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
     @Override
     public void onDestroyView() {
         super.onDestroyView();

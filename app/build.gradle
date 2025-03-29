@@ -11,11 +11,16 @@ android {
         minSdk 30
         targetSdk 33
         versionCode 1
-        versionName "1.0"
+        versionName "V 1.25329.1"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
-
+    // 自定义打包名称
+    android.applicationVariants.all { variant ->
+        variant.outputs.all {
+            outputFileName = "AsTrip_${buildType.name}_v${versionName}.apk"
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
