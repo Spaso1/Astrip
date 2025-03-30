@@ -98,17 +98,21 @@ public class HomeFragment extends Fragment {
         duilieSum = 1;
         this.savedInstanceState = savedInstanceState;
         save = requireContext().getSharedPreferences("save", Context.MODE_PRIVATE);
-        readLikePlace();
         return root;
     }
 
     private void readLikePlace() {
         try {
+            for(Marker marker : likeMarkers) {
+                marker.remove();
+            }
             String json = save.getString("likePlaces", "");
             if (!json.isEmpty()) {
                 likePlaces = new Gson().fromJson(json, new TypeToken<List<LikePlace>>() {}.getType());
+
                 for (LikePlace likePlace : likePlaces) {
-                    LatLng latLng = new LatLng(likePlace.getX(), likePlace.getY());
+                    Log.d("read", "readLikePlace: " + likePlace.getName());
+                    LatLng latLng = new LatLng(likePlace.getY(), likePlace.getX());
                     addLikeMarker(latLng, likePlace.getName());
                 }
             }
@@ -119,10 +123,12 @@ public class HomeFragment extends Fragment {
     private void saveLikePlace() {
         try {
             String json = new Gson().toJson(likePlaces);
+            Log.d("save", "saveLikePlace: " + json);
+
             save.edit().putString("likePlaces", json).apply();
             save.edit().apply();
         }catch (Exception e) {
-
+e.printStackTrace();
         }
     }
     @SuppressLint("MissingInflatedId")
@@ -462,6 +468,9 @@ public class HomeFragment extends Fragment {
                         createLikeMarker(latLng);
                     }
                 });
+
+                readLikePlace();
+
             }catch (Exception e) {
 
             }
@@ -469,19 +478,47 @@ public class HomeFragment extends Fragment {
     }
     private void addLikeMarker(final LatLng latLng,String markerName) {
         // 创建 Bundle 对象并设置 x, y, name 内容
+        Log.d("addLikeMarker", "addLikeMarker: " + latLng.toString());
         Bundle extraInfo = new Bundle();
+        if (latLng.latitude < -90 || latLng.latitude > 90 || latLng.longitude < -180 || latLng.longitude > 180) {
+            Log.e("addLikeMarker", "Invalid LatLng: " + latLng);
+            return;
+        }
+
         extraInfo.putDouble("x", latLng.longitude);
         extraInfo.putDouble("y", latLng.latitude);
         extraInfo.putString("name", markerName);
-
+        Bitmap bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.mmexportbba7d96e1e5550eab0dc29ed9d4715a3_1743252114743);
+        bitmap = createMarkerBitmapWithTime(bitmap, "no");
+        BitmapDescriptor descriptor = BitmapDescriptorFactory.fromBitmap(bitmap);
         // 创建 MarkerOptions 并附加 Bundle
+        if (baiduMap == null) {
+            Log.e("addLikeMarker", "BaiduMap is not initialized");
+            return;
+        }
+        if (extraInfo.isEmpty()) {
+            Log.e("addLikeMarker", "ExtraInfo is empty");
+            return;
+        }
+        if (descriptor == null) {
+            Log.e("addLikeMarker", "BitmapDescriptor creation failed");
+            return;
+        }
         MarkerOptions markerOptions = new MarkerOptions()
                 .position(latLng)
                 .title(markerName)
-                .icon(BitmapDescriptorFactory.fromResource(R.drawable.mmexportbba7d96e1e5550eab0dc29ed9d4715a3_1743252114743))
+                .icon(descriptor)
                 .extraInfo(extraInfo);
+        if (markerOptions == null || markerOptions.getPosition() == null || markerOptions.getIcon() == null) {
+            Log.e("addLikeMarker", "MarkerOptions configuration error");
+            return;
+        }
         Marker marker = (Marker) baiduMap.addOverlay(markerOptions);
-        likeMarkers.add(marker); // 将标记添加到 likeMarkers 列表中
+        if (marker != null) {
+            likeMarkers.add(marker);
+        } else {
+            Log.e("addLikeMarker", "Failed to add marker to map");
+        }
     }
     @SuppressLint("MissingInflatedId")
     private void createLikeMarker(LatLng latLng) {
@@ -505,19 +542,26 @@ public class HomeFragment extends Fragment {
 
                 // 创建 Bundle 对象并设置 x, y, name 内容
                 Bundle extraInfo = new Bundle();
-                extraInfo.putDouble("x", latLng.longitude);
-                extraInfo.putDouble("y", latLng.latitude);
+                extraInfo.putDouble("y", latLng.longitude);
+                extraInfo.putDouble("x", latLng.latitude);
                 extraInfo.putString("name", markerName);
+                Bitmap bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.mmexportbba7d96e1e5550eab0dc29ed9d4715a3_1743252114743);
+                Bitmap newBitmap = createMarkerBitmapWithTime(bitmap, "no");
 
+                BitmapDescriptor descriptor = BitmapDescriptorFactory.fromBitmap(newBitmap);
                 // 创建 MarkerOptions 并附加 Bundle
                 MarkerOptions markerOptions = new MarkerOptions()
                         .position(latLng)
                         .title(markerName)
-                        .icon(BitmapDescriptorFactory.fromResource(R.drawable.mmexportbba7d96e1e5550eab0dc29ed9d4715a3_1743252114743))
+                        .icon(descriptor)
                         .extraInfo(extraInfo);
                 Marker marker = (Marker) baiduMap.addOverlay(markerOptions);
                 likeMarkers.add(marker); // 将标记添加到 likeMarkers 列表中
-
+                LikePlace likePlace = new LikePlace();
+                likePlace.setName(markerName);
+                likePlace.setX(latLng.longitude);
+                likePlace.setY(latLng.latitude);
+                likePlaces.add(likePlace);
                 saveLikePlace();
             }
         });
@@ -561,15 +605,25 @@ public class HomeFragment extends Fragment {
         Bundle extraInfo = marker.getExtraInfo();
         double x = (double) extraInfo.get("x");
         double y = (double) extraInfo.get("y");
+        String name = (String) extraInfo.get("name");
+        pointer.setPointName(name);
+
         pointer.setX(x);
         pointer.setY(y);
         pointer.setPay(0); // 可以根据需要设置支付信息
+        //UUID就是在List中的位置
+        int index = likeMarkers.indexOf(marker);
+        pointer.setPointUUID(index + "");
 
         // 显示弹窗
-        showPointerInfoDialog(pointer);
+        showPointerInfoDialog(pointer,1);
     }
     @SuppressLint("MissingInflatedId")
-    private void showPointerInfoDialog(Pointer pointer) {
+    private void showPointerInfoDialog(Pointer pointer ) {
+        showPointerInfoDialog(pointer,0);
+    }
+    @SuppressLint("MissingInflatedId")
+    private void showPointerInfoDialog(Pointer pointer,int typer) {
         MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(requireContext());
         View dialogView = getLayoutInflater().inflate(R.layout.design_dialog, null);
         builder.setView(dialogView);
@@ -631,7 +685,7 @@ public class HomeFragment extends Fragment {
             s ++;        
         }
 
-        if (b) {
+        if (b || typer == 1) {
             deleteButton.setVisibility(View.VISIBLE);
             updateButton.setVisibility(View.VISIBLE);
             pointIdEditText.setText(key);
@@ -708,7 +762,7 @@ public class HomeFragment extends Fragment {
                     typeEditText.getText().toString().isEmpty() ||
                     xEditText.getText().toString().isEmpty() ||
                     yEditText.getText().toString().isEmpty() ||
-                    payEditText.getText().toString().isEmpty()) {
+                    payEditText.getText().toString().isEmpty() || typer == 1) {
                 Toast.makeText(requireContext(), "请填写完整信息", Toast.LENGTH_SHORT).show();
                 return;
             }
@@ -731,6 +785,23 @@ public class HomeFragment extends Fragment {
             pointer.setY(y);
             pointer.setPay(pay);
 
+            if (typer == 1) {
+                likeMarkers.remove(Integer.parseInt(pointer.getPointUUID()));
+
+                //取出likeMarkers,全部转成likePlace
+                likePlaces.clear();
+                for (Marker marker : likeMarkers) {
+                    LikePlace likePlace = new LikePlace();
+                    likePlace.setName(marker.getTitle());
+                    likePlace.setX(marker.getPosition().latitude);
+                    likePlace.setY(marker.getPosition().longitude);
+                    likePlaces.add(likePlace);
+                }
+                saveLikePlace();
+                readLikePlace();
+                Toast.makeText(requireContext(), "已更新", Toast.LENGTH_SHORT).show();
+                return;
+            }
             // 更新适配器的数据集
             pointsAdapter.notifyDataSetChanged();
             designs.remove(finalS + "");
@@ -762,6 +833,24 @@ public class HomeFragment extends Fragment {
         // 设置删除按钮
         deleteButton.setOnClickListener(v -> {
             // 从 designs 中删除 Pointer
+            if (typer == 1) {
+                likeMarkers.remove(Integer.parseInt(pointer.getPointUUID()));
+
+                //取出likeMarkers,全部转成likePlace
+                likePlaces.clear();
+                for (Marker marker : likeMarkers) {
+                    LikePlace likePlace = new LikePlace();
+                    likePlace.setName(marker.getTitle());
+                    likePlace.setX(marker.getPosition().latitude);
+                    likePlace.setY(marker.getPosition().longitude);
+                    likePlaces.add(likePlace);
+                }
+                saveLikePlace();
+                readLikePlace();
+                Toast.makeText(requireContext(), "已删除", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
             designs.values().removeIf(p -> p.getPointUUID().equals(pointer.getPointUUID()));
 
             // 更新适配器的数据集
@@ -1154,6 +1243,10 @@ public class HomeFragment extends Fragment {
     private String nowdate = "0";
     private int[] color = new int[3];
     private Bitmap createMarkerBitmapWithTime(Bitmap baseBitmap, String time) {
+        if(time.equals("no")) {
+            baseBitmap = Bitmap.createScaledBitmap(baseBitmap, 100, 110, true);
+            return baseBitmap;
+        }
         // 创建一个新的位图，宽度为原位图宽度加上文本宽度，高度为原位图高度
         baseBitmap = Bitmap.createScaledBitmap(baseBitmap, 60, 65, true); // 缩放到 60x65 像素
 
