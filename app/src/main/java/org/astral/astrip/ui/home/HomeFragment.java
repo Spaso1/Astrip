@@ -2,10 +2,8 @@ package org.astral.astrip.ui.home;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
-import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
-import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.*;
@@ -19,11 +17,15 @@ import android.widget.*;
 import androidx.annotation.NonNull;
 import androidx.appcompat.widget.Toolbar;
 import androidx.coordinatorlayout.widget.CoordinatorLayout;
+import androidx.core.view.ViewCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 import com.baidu.mapapi.SDKInitializer;
 import com.baidu.mapapi.map.*;
 import com.baidu.mapapi.model.LatLng;
+import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.checkbox.MaterialCheckBox;
@@ -38,13 +40,11 @@ import com.google.gson.reflect.TypeToken;
 import com.skydoves.colorpickerview.ColorEnvelope;
 import com.skydoves.colorpickerview.ColorPickerView;
 import com.skydoves.colorpickerview.listeners.ColorEnvelopeListener;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
 import org.astral.astrip.MainActivity;
 import org.astral.astrip.R;
+import org.astral.astrip.adapter.PointReAdapter;
 import org.astral.astrip.adapter.PointsAdapter;
-import org.astral.astrip.been.AmapReverseGeocodeResponse;
+import org.astral.astrip.adapter.ProjectReAdapter;
 import org.astral.astrip.been.LikePlace;
 import org.astral.astrip.been.Pointer;
 import org.astral.astrip.been.Project;
@@ -55,7 +55,8 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
-public class HomeFragment extends Fragment {
+public class HomeFragment extends Fragment  implements ProjectReAdapter.OnItemClickListener {
+    private LinearLayout layoutDesign;
     private MapView mapView;
     private BaiduMap baiduMap;
     private FragmentHomeBinding binding;
@@ -71,8 +72,11 @@ public class HomeFragment extends Fragment {
     private List<Marker> markers = new ArrayList<>();
     private Polyline polyline;
     private SharedPreferences save;
+    private SharedPreferences setting;
+
     private boolean isDes = false;
     private LinearLayout hor;
+    private BottomSheetBehavior<View> bottomSheetBehavior;
     private Map<String,Pointer> designs = new HashMap<>();
     private ListView pointsListView;
     private PointsAdapter pointsAdapter;
@@ -82,6 +86,10 @@ public class HomeFragment extends Fragment {
     private List<Marker> likeMarkers = new ArrayList<>();
     private List<Marker> useLikeMarkers = new ArrayList<>();
     private List<LikePlace> likePlaces = new ArrayList<>();
+    private RecyclerView recyclerView;
+    private ProjectReAdapter projectreAdapter;
+    private PointReAdapter pointsreAdapter;
+
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
         HomeViewModel homeViewModel =
@@ -95,13 +103,69 @@ public class HomeFragment extends Fragment {
         requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION},0x123);
         FloatingActionButton fab = binding.fab;
         menu(fab);
+
+        View bottomSheet = binding.bottomSheet;
+        bottomSheetBehavior = BottomSheetBehavior.from(bottomSheet);
+        bottomSheetBehavior.setPeekHeight(dpToPx(80));
+        // 设置滑动监听
+
+        recyclerView = binding.recyclerView;
+        recyclerView.setLayoutManager(new GridLayoutManager(getContext(), 2)); // 一行显示两个
+        recyclerView.setNestedScrollingEnabled(true);
+
+        projectreAdapter = new ProjectReAdapter();
+        projectreAdapter.setOnItemClickListener(this); // 设置点击监听器
+
+        recyclerView.setAdapter(projectreAdapter);
+        //点击效果
+        bottomSheetBehavior.addBottomSheetCallback(new BottomSheetBehavior.BottomSheetCallback() {
+            @Override
+            public void onStateChanged(@NonNull View bottomSheet, int newState) {
+                if (newState == BottomSheetBehavior.STATE_DRAGGING) {
+                    recyclerView.stopNestedScroll();
+                } else if (newState == BottomSheetBehavior.STATE_SETTLING) {
+                    recyclerView.startNestedScroll(ViewCompat.SCROLL_AXIS_VERTICAL);
+                }
+            }
+            @Override
+            public void onSlide(@NonNull View bottomSheet, float slideOffset) {
+                // 处理滑动
+            }
+        });
         duilieSum = 1;
+        layoutDesign = binding.layoutDesign;
         this.savedInstanceState = savedInstanceState;
         save = requireContext().getSharedPreferences("save", Context.MODE_PRIVATE);
+        readLikePlaceAndProject();
         return root;
     }
 
-    private void readLikePlace() {
+
+
+    @Override
+    public void onItemClick(Project project) {
+        // 处理点击事件，例如打开项目详情
+        double minX = project.getPaths().values().stream().mapToDouble(p -> p.getX()).min().orElse(0);
+        double maxX = project.getPaths().values().stream().mapToDouble(p -> p.getX()).max().orElse(0);
+        double minY = project.getPaths().values().stream().mapToDouble(p -> p.getY()).min().orElse(0);
+        double maxY = project.getPaths().values().stream().mapToDouble(p -> p.getY()).max().orElse(0);
+        int zoom = (int)( (Math.min(Math.log(360 / (maxX - minX)), Math.log(360 / (maxY - minY)))) * 1.7);
+        baiduMap.animateMapStatus(MapStatusUpdateFactory.newLatLngZoom(new LatLng(project.getPaths().values().stream().mapToDouble(p -> p.getY()).average().orElse(0),
+                project.getPaths().values().stream().mapToDouble(p -> p.getX()).average().orElse(0)), zoom));
+
+        openSelectedProject(project);
+        Toast.makeText(getContext(), "点击了项目: " + project.getName(), Toast.LENGTH_SHORT).show();
+    }
+    @SuppressLint("NotifyDataSetChanged")
+    private void updateProjectList(List<Project> projects) {
+        projectreAdapter.setProjectList(projects);
+        projectreAdapter.notifyDataSetChanged();
+    }
+    public int dpToPx(int dp) {
+        return (int) (dp * getResources().getDisplayMetrics().density);
+    }
+
+    private void readLikePlaceAndProject() {
         try {
             for(Marker marker : likeMarkers) {
                 marker.remove();
@@ -116,6 +180,9 @@ public class HomeFragment extends Fragment {
                     addLikeMarker(latLng, likePlace.getName());
                 }
             }
+            json = save.getString("projects", "");
+            projects = new Gson().fromJson(json, new TypeToken<List<Project>>() {}.getType());
+            updateProjectList(projects);
         }catch (Exception e) {
 
         }
@@ -128,7 +195,7 @@ public class HomeFragment extends Fragment {
             save.edit().putString("likePlaces", json).apply();
             save.edit().apply();
         }catch (Exception e) {
-e.printStackTrace();
+            e.printStackTrace();
         }
     }
     @SuppressLint("MissingInflatedId")
@@ -204,7 +271,6 @@ e.printStackTrace();
 
                 MaterialButton option5 = dialogView.findViewById(R.id.option5);
                 option5.setOnClickListener(v -> {
-                    design();
                     //打开一个项目
                     openProjectSingle();
                 });
@@ -233,6 +299,10 @@ e.printStackTrace();
     }
     private void exitProject() {
         pointsAdapter.notifyDataSetChanged();
+        recyclerView.setAdapter(projectreAdapter);
+        projectreAdapter.notifyDataSetChanged();
+        recyclerView.setLayoutManager(new GridLayoutManager(getContext(), 2)); // 一行显示两个
+
         //清空地图上线
         if(polyline != null) {
             polyline.remove();
@@ -330,7 +400,7 @@ e.printStackTrace();
                     if (selectedProjectIndex[0] >= 0) {
                         Project selectedProject = projects.get(selectedProjectIndex[0]);
                         openSelectedProject(selectedProject);
-                        duilieSum = selectedProject.getPaths().size() + 1;
+                        duilieSum = selectedProject.getPaths().size() ;
                         designs= selectedProject.getPaths();
                         Toast.makeText(getContext(), "已打开", Toast.LENGTH_SHORT).show();
                         //摄像机移动中心,缩放
@@ -400,7 +470,19 @@ e.printStackTrace();
 
 
     private void design() {
+        layoutDesign.setVisibility(View.VISIBLE);
         isDes = true;
+        recyclerView.setLayoutManager(new GridLayoutManager(getContext(), 1)); // 一行显示两个
+
+        pointsreAdapter = new PointReAdapter();
+        pointsreAdapter.setOnItemClickListener(this::showPointerInfoDialog);
+        recyclerView.setAdapter(pointsreAdapter);
+        List<Pointer> points = new ArrayList<>();
+        for (Pointer pointer : designs.values()) {
+            points.add(pointer);
+        }
+        pointsreAdapter.setProjectList(points);
+        pointsreAdapter.notifyDataSetChanged();
     }
     private void start() {
         if (run == 0) {
@@ -469,7 +551,7 @@ e.printStackTrace();
                     }
                 });
 
-                readLikePlace();
+                readLikePlaceAndProject();
 
             }catch (Exception e) {
 
@@ -616,7 +698,10 @@ e.printStackTrace();
         pointer.setPointUUID(index + "");
 
         // 显示弹窗
-        showPointerInfoDialog(pointer,1);
+        if(!isDes) {
+            showPointerInfoDialog(pointer,1);
+
+        }
     }
     @SuppressLint("MissingInflatedId")
     private void showPointerInfoDialog(Pointer pointer ) {
@@ -798,12 +883,14 @@ e.printStackTrace();
                     likePlaces.add(likePlace);
                 }
                 saveLikePlace();
-                readLikePlace();
+                readLikePlaceAndProject();
                 Toast.makeText(requireContext(), "已更新", Toast.LENGTH_SHORT).show();
                 return;
             }
             // 更新适配器的数据集
             pointsAdapter.notifyDataSetChanged();
+
+
             designs.remove(finalS + "");
             if (!designs.containsKey(pointId + "")) {
                 designs.put(pointId + "", pointer);
@@ -822,6 +909,9 @@ e.printStackTrace();
             project.setPaths(designs);
             addMarkersAndPolyline(project);
 
+            List<Pointer> pointList = new ArrayList<>(designs.values());
+            pointsreAdapter.setProjectList(pointList);
+            pointsreAdapter.notifyDataSetChanged();
             Toast.makeText(getContext(), "更新成功!", Toast.LENGTH_SHORT).show();
 
             if (type.equals("终点") || isEndCheckBox.isChecked()) {
@@ -846,7 +936,7 @@ e.printStackTrace();
                     likePlaces.add(likePlace);
                 }
                 saveLikePlace();
-                readLikePlace();
+                readLikePlaceAndProject();
                 Toast.makeText(requireContext(), "已删除", Toast.LENGTH_SHORT).show();
                 return;
             }
@@ -857,7 +947,9 @@ e.printStackTrace();
             pointsAdapter.clear();
             pointsAdapter.addAll(designs.values());
             pointsAdapter.notifyDataSetChanged();
-
+            List<Pointer> pointList = new ArrayList<>(designs.values());
+            pointsreAdapter.setProjectList(pointList);
+            pointsreAdapter.notifyDataSetChanged();
             // 删除地图上的 Marker
             removeMarker(pointer);
 
@@ -909,10 +1001,23 @@ e.printStackTrace();
                     if (type.equals("终点")) {
                         isDes = false;
                     }
-                    designs.put(duilieSum + "", newPointer);
+                    if (!designs.containsKey(pointId + "")) {
+                        designs.put(pointId + "", newPointer);
+                    }else {
+                        duilieSum++;
+                        Log.d("pointIdEditText111111111111111111", pointId +"|" + finalS);
+                        Log.d(pointId + "111111111111", "" + duilieSum);
+                        newPointer.setPointId(finalS);
+                        designs.put(duilieSum + "", newPointer);
+                    }
                     pointsAdapter.clear();
                     pointsAdapter.addAll(designs.values());
                     pointsAdapter.notifyDataSetChanged();
+
+                    List<Pointer> pointList = new ArrayList<>(designs.values());
+                    pointsreAdapter.setProjectList(pointList);
+                    pointsreAdapter.notifyDataSetChanged();
+
                     Project project = new Project();
                     project.setPaths(designs);
                     addMarkersAndPolyline(project);
@@ -1096,7 +1201,8 @@ e.printStackTrace();
             isDes = false;
 
             Toast.makeText(getContext(), "项目已保存!", Toast.LENGTH_SHORT).show();
-
+            exitProject();
+            layoutDesign.setVisibility(View.GONE);
             Toolbar toolbar = (Toolbar)  requireActivity().findViewById(R.id.toolbar);
             toolbar.setTitle("主页");
             dialog.dismiss();

@@ -18,6 +18,8 @@
     <color name="icons">#FFFFFF</color>
     <color name="divider">#B6B6B6</color>
     <color name="colorPrimary">#D5C4ED</color>
+    <color name="primary2">#C5AEE6</color>
+
     <color name="colorPrimaryVariant">#D5C4ED</color>
     <color name="colorOnPrimary">#FFFFFF</color>
     <color name="colorSecondary">#D5C4ED</color>

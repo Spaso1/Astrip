@@ -67,7 +67,7 @@
                 android:id="@+id/option5"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="修改"
+                android:text="打开并修改"
                 android:textColor="@android:color/black"
                 app:backgroundTint="@android:color/white"
                 app:strokeColor="@color/primary"

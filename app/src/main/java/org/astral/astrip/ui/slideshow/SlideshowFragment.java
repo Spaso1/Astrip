@@ -1,5 +1,6 @@
 package org.astral.astrip.ui.slideshow;
 
+import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
@@ -13,6 +14,7 @@ import androidx.lifecycle.ViewModelProvider;
 import org.astral.astrip.databinding.FragmentSlideshowBinding;
 
 public class SlideshowFragment extends Fragment {
+    private SharedPreferences setting;
 
     private FragmentSlideshowBinding binding;
 
@@ -24,6 +26,7 @@ public class SlideshowFragment extends Fragment {
         binding = FragmentSlideshowBinding.inflate(inflater, container, false);
         View root = binding.getRoot();
 
+        setting = requireContext().getSharedPreferences("setting", 0);
         final TextView textView = binding.textSlideshow;
         textView.setText("Powered By Reisa - 敬请期待\n" + getAppVersionName());
         //获取gradle的版本号
